@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Platform, Dimensions } from 'react-native';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Bus } from '@/types/bus';
-import { MapPin } from 'lucide-react-native';
+import { MapPin, Navigation } from 'lucide-react-native';
 
 interface GoogleMapViewProps {
   buses: Bus[];
@@ -12,15 +13,29 @@ interface GoogleMapViewProps {
 
 const { width, height } = Dimensions.get('window');
 
+// Default location (Kigali, Rwanda)
+const DEFAULT_REGION = {
+  latitude: -1.9441,
+  longitude: 30.0619,
+  latitudeDelta: 0.0922,
+  longitudeDelta: 0.0421,
+};
+
 export function GoogleMapView({ buses, userLocation, onBusPress }: GoogleMapViewProps) {
   const { theme } = useTheme();
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [region, setRegion] = useState(DEFAULT_REGION);
 
   useEffect(() => {
-    // Simulate map loading
-    const timer = setTimeout(() => setMapLoaded(true), 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    if (userLocation) {
+      setRegion({
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      });
+    }
+  }, [userLocation]);
 
   if (Platform.OS === 'web') {
     return (
@@ -35,7 +50,7 @@ export function GoogleMapView({ buses, userLocation, onBusPress }: GoogleMapView
           }}
         >
           <iframe
-            src={`https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15949.123456789!2d30.0619!3d-1.9441!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x19dca4258ed8e797%3A0x4a87a1b2c3d4e5f6!2sKimironko%2C%20Kigali%2C%20Rwanda!5e0!3m2!1sen!2sus!4v1234567890123!5m2!1sen!2sus`}
+            src={`https://www.google.com/maps/embed/v1/view?key=AIzaSyBym8ra9Gj5Yxhef0BSkuNzyAHJq5lyH5A&center=${userLocation?.latitude || -1.9441},${userLocation?.longitude || 30.0619}&zoom=13&maptype=roadmap`}
             width="100%"
             height="100%"
             style={{ border: 0 }}
@@ -53,28 +68,46 @@ export function GoogleMapView({ buses, userLocation, onBusPress }: GoogleMapView
             bottom: 0,
             pointerEvents: 'none',
           }}>
-            {buses.slice(0, 5).map((bus, index) => (
-              <div
-                key={bus.id}
-                style={{
-                  position: 'absolute',
-                  left: `${20 + (index % 3) * 25}%`,
-                  top: `${30 + Math.floor(index / 3) * 20}%`,
-                  backgroundColor: theme.primary,
-                  color: theme.background,
-                  padding: '4px 8px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  pointerEvents: 'auto',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                }}
-                onClick={() => onBusPress?.(bus)}
-              >
-                🚌 {bus.eta}m
-              </div>
-            ))}
+            {buses.slice(0, 8).map((bus, index) => {
+              // Calculate position based on bus location relative to map center
+              const centerLat = userLocation?.latitude || -1.9441;
+              const centerLng = userLocation?.longitude || 30.0619;
+              
+              // Simple conversion for demo - in production you'd use proper map projection
+              const latOffset = (bus.currentLocation.latitude - centerLat) * 1000;
+              const lngOffset = (bus.currentLocation.longitude - centerLng) * 1000;
+              
+              const left = Math.max(10, Math.min(90, 50 + lngOffset));
+              const top = Math.max(10, Math.min(90, 50 - latOffset));
+              
+              return (
+                <div
+                  key={bus.id}
+                  style={{
+                    position: 'absolute',
+                    left: `${left}%`,
+                    top: `${top}%`,
+                    backgroundColor: bus.isActive ? theme.primary : theme.textSecondary,
+                    color: theme.background,
+                    padding: '6px 10px',
+                    borderRadius: '16px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    pointerEvents: 'auto',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    transform: 'translate(-50%, -50%)',
+                    minWidth: '60px',
+                    textAlign: 'center',
+                    border: '2px solid white',
+                  }}
+                  onClick={() => onBusPress?.(bus)}
+                  title={`${bus.route} - ${bus.eta}min ETA`}
+                >
+                  🚌 {bus.eta}m
+                </div>
+              );
+            })}
             
             {userLocation && (
               <div
@@ -84,85 +117,97 @@ export function GoogleMapView({ buses, userLocation, onBusPress }: GoogleMapView
                   top: '50%',
                   transform: 'translate(-50%, -50%)',
                   backgroundColor: '#4285f4',
-                  width: '16px',
-                  height: '16px',
+                  width: '20px',
+                  height: '20px',
                   borderRadius: '50%',
-                  border: '3px solid white',
+                  border: '4px solid white',
                   boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                  zIndex: 1000,
                 }}
+                title="Your location"
               />
             )}
           </div>
         </div>
         
         <View style={styles.mapInfo}>
-          <Text style={[styles.mapInfoText, { color: theme.textSecondary }]}>
-            🗺️ Interactive Google Maps with real-time bus tracking
+          <Text style={[styles.mapInfoText, { color: 'white' }]}>
+            🗺️ Google Maps - {buses.length} buses tracked
           </Text>
         </View>
       </View>
     );
   }
 
-  // Native map placeholder (would use react-native-maps in production)
+  // Native map implementation using react-native-maps
   return (
     <View style={[styles.nativeMapContainer, { backgroundColor: theme.surface }]}>
-      <View style={styles.mapHeader}>
-        <Text style={[styles.mapTitle, { color: theme.text }]}>
-          Google Maps Integration
-        </Text>
-        <Text style={[styles.mapSubtitle, { color: theme.textSecondary }]}>
-          {buses.length} buses tracked
-        </Text>
-      </View>
+      <MapView
+        style={styles.map}
+        provider={PROVIDER_GOOGLE}
+        region={region}
+        onRegionChangeComplete={setRegion}
+        showsUserLocation={!!userLocation}
+        showsMyLocationButton={true}
+        showsCompass={true}
+        showsScale={true}
+        mapType="standard"
+        onMapReady={() => setMapLoaded(true)}
+      >
+        {/* User location marker */}
+        {userLocation && (
+          <Marker
+            coordinate={userLocation}
+            title="Your Location"
+            description="You are here"
+          >
+            <View style={[styles.userLocationMarker, { backgroundColor: '#4285f4' }]}>
+              <Navigation size={16} color="white" />
+            </View>
+          </Marker>
+        )}
 
-      <View style={styles.mapContent}>
-        {/* Simulated map with bus markers */}
-        <View style={styles.busMarkers}>
-          {buses.slice(0, 6).map((bus, index) => (
-            <View
-              key={bus.id}
-              style={[
-                styles.busMarker,
-                { 
-                  left: 50 + (index % 3) * 80,
-                  top: 100 + Math.floor(index / 3) * 80,
-                  backgroundColor: theme.primary 
-                }
-              ]}
-            >
+        {/* Bus markers */}
+        {buses.map((bus) => (
+          <Marker
+            key={bus.id}
+            coordinate={bus.currentLocation}
+            title={`${bus.route}`}
+            description={`${bus.destination} - ${bus.eta}min ETA`}
+            onPress={() => onBusPress?.(bus)}
+          >
+            <View style={[
+              styles.busMarker,
+              { 
+                backgroundColor: bus.isActive ? theme.primary : theme.textSecondary,
+                borderColor: theme.background,
+              }
+            ]}>
               <Text style={[styles.busMarkerText, { color: theme.background }]}>
+                🚌
+              </Text>
+              <Text style={[styles.busMarkerEta, { color: theme.background }]}>
                 {bus.eta}m
               </Text>
             </View>
-          ))}
-          
-          {userLocation && (
-            <View style={[styles.userMarker, { backgroundColor: '#4285f4' }]}>
-              <MapPin size={16} color="white" />
-            </View>
-          )}
-        </View>
+          </Marker>
+        ))}
+      </MapView>
 
-        <View style={styles.mapOverlay}>
-          <Text style={[styles.overlayText, { color: theme.textSecondary }]}>
-            📍 Your location
-          </Text>
-          <Text style={[styles.overlayText, { color: theme.textSecondary }]}>
-            🚌 Live bus tracking
-          </Text>
-          <Text style={[styles.overlayText, { color: theme.textSecondary }]}>
-            ⏱️ Real-time ETAs
+      {!mapLoaded && (
+        <View style={[styles.loadingOverlay, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.loadingText, { color: theme.text }]}>
+            Loading Google Maps...
           </Text>
         </View>
-      </View>
+      )}
 
-      <View style={styles.mapFooter}>
-        <Text style={[styles.footerNote, { color: theme.textSecondary }]}>
-          * Google Maps integration active
+      <View style={[styles.mapStats, { backgroundColor: theme.surface + 'E6' }]}>
+        <Text style={[styles.statsText, { color: theme.text }]}>
+          📍 {buses.filter(b => b.isActive).length} active buses
         </Text>
-        <Text style={[styles.footerNote, { color: theme.textSecondary }]}>
-          Tap buses for route details and fare information
+        <Text style={[styles.statsText, { color: theme.textSecondary }]}>
+          🗺️ Google Maps
         </Text>
       </View>
     </View>
@@ -182,51 +227,23 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginHorizontal: 16,
   },
-  mapHeader: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  mapTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-Bold',
-  },
-  mapSubtitle: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    marginTop: 4,
-  },
-  mapContent: {
+  map: {
     flex: 1,
-    position: 'relative',
   },
-  busMarkers: {
+  loadingOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-  },
-  busMarker: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    alignItems: 'center',
   },
-  busMarkerText: {
-    fontSize: 10,
-    fontFamily: 'Inter-Bold',
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
   },
-  userMarker: {
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
+  userLocationMarker: {
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -240,27 +257,43 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  mapOverlay: {
+  busMarker: {
+    minWidth: 50,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  busMarkerText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Bold',
+  },
+  busMarkerEta: {
+    fontSize: 10,
+    fontFamily: 'Inter-Bold',
+    marginTop: 1,
+  },
+  mapStats: {
     position: 'absolute',
-    bottom: 20,
-    left: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    top: 16,
+    left: 16,
+    right: 16,
     padding: 12,
     borderRadius: 8,
-  },
-  overlayText: {
-    fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    marginBottom: 2,
-  },
-  mapFooter: {
-    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  footerNote: {
+  statsText: {
     fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    textAlign: 'center',
+    fontFamily: 'Inter-SemiBold',
   },
   mapInfo: {
     position: 'absolute',
@@ -275,6 +308,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Inter-Regular',
     textAlign: 'center',
-    color: 'white',
   },
 });
